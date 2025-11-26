@@ -110,20 +110,6 @@
     .boro.hover { stroke:#a9b5ff; stroke-width:1.4; }
     .school { stroke:#0b1020; stroke-width:.7; }
 
-    .help-btn {
-      position:absolute;
-      right:16px;
-      top:48px;
-      background:linear-gradient(180deg,#1b2350,#101737);
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:10px;
-      padding:6px 10px;
-      font:12px system-ui, sans-serif;
-      cursor:pointer;
-      box-shadow:0 6px 18px rgba(0,0,0,.35);
-    }
-
     .chart-wrap {
       position:relative;
       background:#0b1020;
@@ -134,49 +120,6 @@
 
     #chart-container {
       position: relative; /* so tooltip is positioned relative to this */
-    }
-
-    .overlay {
-      position:absolute;
-      inset:0;
-      background:rgba(3,7,25,.65);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:10;
-    }
-    .overlay-modal {
-      width:min(720px, 92%);
-      background:#0b132f;
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:14px;
-      box-shadow:0 20px 60px rgba(0,0,0,.45);
-      padding:16px;
-      font-size:13px;
-    }
-    .overlay-footer {
-      display:flex;
-      gap:8px;
-      margin-top:12px;
-      justify-content:flex-end;
-      font-size:12px;
-    }
-    .overlay-footer button {
-      background:#1b2350;
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:10px;
-      padding:6px 10px;
-      font:12px system-ui, sans-serif;
-      cursor:pointer;
-    }
-    .overlay-footer label {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      margin-right:auto;
-      color:#9aa4c7;
     }
 
     #stats-panel {
@@ -643,97 +586,11 @@
     // compute color scale once
     const colorScale = computeColorScale();
 
-    // === LEGEND NOW UP HERE, RIGHT UNDER SUBTITLE ===
+    // legend placed right under subtitle
     const legendDiv = document.createElement('div');
     legendDiv.style.marginBottom = '8px';
     legendDiv.appendChild(makeColorLegend(colorScale, width));
     wrap.appendChild(legendDiv);
-
-    // Help button & overlay
-    const helpBtn = document.createElement('button');
-    helpBtn.textContent = 'Help';
-    helpBtn.className = 'help-btn';
-    wrap.appendChild(helpBtn);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay';
-    const modal = document.createElement('div');
-    modal.className = 'overlay-modal';
-
-    const modalTitle = document.createElement('div');
-    modalTitle.textContent = 'How to read this map';
-    modalTitle.style.font = '600 16px system-ui, sans-serif';
-    modalTitle.style.marginBottom = '8px';
-
-    const modalBody = document.createElement('div');
-    modalBody.style.color = '#c6cefb';
-    modalBody.style.lineHeight = '1.45';
-    modalBody.innerHTML = `
-      <div style="margin-bottom:8px">
-        <b>What you are seeing</b><br/>
-        Each circle is a NYC public high school. Color reflects SAT performance for the selected metric, scaled within the current data range. Size increases with higher scores.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <b>Explore</b><br/>
-          • Hover a school for full scores and details<br/>
-          • Click a school to pin its tooltip (if pin mode is enabled)<br/>
-          • Hover a borough to see that borough’s average<br/>
-          • Use your trackpad or mouse to pan and zoom
-        </div>
-        <div>
-          <b>Controls</b><br/>
-          • Use the year control to switch between 2010 and 2012<br/>
-          • Change the metric to view reading, math, writing, or total<br/>
-          • Use search, minimum score, and borough filters to focus
-        </div>
-      </div>
-      <div style="margin-top:8px">
-        When nothing is hovered, the box in the top right shows the NYC-wide average for the current year and metric.
-      </div>
-    `;
-
-    const modalFooter = document.createElement('div');
-    modalFooter.className = 'overlay-footer';
-
-    const dontShowLabel = document.createElement('label');
-    const dontShowCb = document.createElement('input');
-    dontShowCb.type = 'checkbox';
-    dontShowLabel.appendChild(dontShowCb);
-    dontShowLabel.appendChild(document.createTextNode('Do not show on load'));
-    modalFooter.appendChild(dontShowLabel);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    modalFooter.appendChild(closeBtn);
-
-    modal.appendChild(modalTitle);
-    modal.appendChild(modalBody);
-    modal.appendChild(modalFooter);
-    overlay.appendChild(modal);
-    wrap.appendChild(overlay);
-
-    const openHelp = () => { overlay.style.display = 'flex'; };
-    const closeHelp = () => {
-      overlay.style.display = 'none';
-      if (dontShowCb.checked) {
-        try { localStorage.setItem('satMapOnboardSeen', '1'); } catch {}
-      }
-    };
-    helpBtn.addEventListener('click', openHelp);
-    closeBtn.addEventListener('click', closeHelp);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeHelp();
-    });
-    wrap.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeHelp();
-    });
-
-    try {
-      if (localStorage.getItem('satMapOnboardSeen') !== '1') {
-        setTimeout(openHelp, 50);
-      }
-    } catch {}
 
     const svg = d3.select(wrap).append("svg")
       .attr("width", width)
