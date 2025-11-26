@@ -606,8 +606,8 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
           <b>Explore</b><br/>
-          • Hover a school for full scores and details<br/>
-          • Click a school to pin its tooltip (if pin mode is enabled)<br/>
+          • Hover a school to see its details in the left panel<br/>
+          • Click a school to pin its details (if pin mode is enabled)<br/>
           • Use your trackpad or mouse to pan and zoom
         </div>
         <div>
@@ -618,7 +618,7 @@
         </div>
       </div>
       <div style="margin-top:6px">
-        When nothing is hovered, the box in the top right shows the NYC-wide average for the current year and metric.
+        When nothing is selected, the box in the top right shows the NYC-wide average for the current year and metric.
       </div>
     `;
 
@@ -677,9 +677,7 @@
     const gNodes  = svg.append("g");
     const gLabels = svg.append("g");
 
-    const nodeTT = d3.select(wrap).append("div").attr("class","tooltip");
-    // removed boroTT – no borough tooltip now
-
+    // no node tooltip, we only update the left stats panel
     const idle = d3.select(wrap).append("div")
       .style("position","absolute")
       .style("right","12px")
@@ -694,23 +692,7 @@
       .style("box-shadow","0 10px 30px rgba(0,0,0,.35)")
       .style("opacity", 1);
 
-    const placeTooltip = (event, el) => {
-      const rect = wrap.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      el.style("left", (x + 10) + "px").style("top", (y + 10) + "px");
-    };
-
     const normalizeBoro = s => (s ?? "").toString().trim().toUpperCase();
-
-    const boroStats = (boroName) => {
-      const key = normalizeBoro(boroName);
-      const arr = filteredPoints.filter(d =>
-        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
-      );
-      const mean = arr.length ? d3.mean(arr, metricAccessor) : null;
-      return { mean, count: arr.length };
-    };
 
     const boroStatsAll = (boroName) => {
       const key = normalizeBoro(boroName);
@@ -744,18 +726,15 @@
 
     const tipHTMLSchool = (d) => {
       const s = getStats(d, state.year);
-      return `
-        <div style='font-weight:700'>${d.name}</div>
-        <div style='color:#9aa4c7;font-size:11px'>${d.borough} • DBN ${d.DBN} • Year ${state.year}</div>
-        <div style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;font-size:11px'>
-          <div><div style='color:#9aa4c7'>Reading</div><b>${s.read ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Math</div><b>${s.math ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Writing</div><b>${s.write ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Total</div><b>${s.total ?? "—"}</b> / 2400</div>
-        </div>`;
+      return {
+        read: s.read ?? "—",
+        math: s.math ?? "—",
+        write: s.write ?? "—",
+        total: s.total ?? "—"
+      };
     };
 
-    // === Borough shapes (no popup tooltip anymore) ===
+    // === Borough shapes (no tooltip) ===
     gMap.selectAll("path")
       .data(nycGeo.features)
       .join("path")
@@ -780,18 +759,12 @@
         .attr("font-size",11)
         .text(d => d.properties.BoroName);
 
-    const showSchool = (event, d) => {
+    const showSchool = (_event, d) => {
       idle.style("opacity", 0);
       state.detail = d;
       renderStatsPanel();
-      nodeTT.html(tipHTMLSchool(d)).style("opacity", 1);
-      placeTooltip(event, nodeTT.node());
-    };
-    const moveSchool = (event) => {
-      placeTooltip(event, nodeTT.node());
     };
     const hideSchool = () => {
-      nodeTT.style("opacity", 0);
       if (!state.pinMode) {
         state.detail = null;
         renderStatsPanel();
@@ -811,9 +784,8 @@
           .attr("fill", d => colorScale(metricAccessor(d)))
           .attr("opacity", 0.92)
           .on("mouseenter", showSchool)
-          .on("mousemove", moveSchool)
           .on("mouseleave", hideSchool)
-          .on("click", (ev, d) => { state.detail = d; renderStatsPanel(); showSchool(ev, d); })
+          .on("click", (ev, d) => { state.detail = d; renderStatsPanel(); })
           .call(e => e.transition().duration(450).attr("r", d => radiusAccessor(d))),
         update => update.call(u => u.transition().duration(400)
           .attr("fill", d => colorScale(metricAccessor(d)))
@@ -836,7 +808,7 @@
     const caption = document.createElement('div');
     caption.className = 'caption';
     caption.textContent =
-      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools for details; click to pin. When not hovering, the NYC-wide average for the selected year is shown.";
+      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools to see details in the left panel; click to pin. When not hovering, the NYC-wide average for the selected year is shown.";
     wrap.appendChild(caption);
 
     chartContainer.appendChild(wrap);
