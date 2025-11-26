@@ -608,7 +608,6 @@
           <b>Explore</b><br/>
           • Hover a school for full scores and details<br/>
           • Click a school to pin its tooltip (if pin mode is enabled)<br/>
-          • Hover a borough to see that borough’s average<br/>
           • Use your trackpad or mouse to pan and zoom
         </div>
         <div>
@@ -679,7 +678,7 @@
     const gLabels = svg.append("g");
 
     const nodeTT = d3.select(wrap).append("div").attr("class","tooltip");
-    const boroTT = d3.select(wrap).append("div").attr("class","tooltip");
+    // removed boroTT – no borough tooltip now
 
     const idle = d3.select(wrap).append("div")
       .style("position","absolute")
@@ -756,25 +755,7 @@
         </div>`;
     };
 
-    const tipHTMLBorough = (boroName) => {
-      const { mean, count } = boroStats(boroName);
-      const { count: totalCount } = boroStatsAll(boroName);
-      const label =
-        state.metric === "math" ? "Avg Math" :
-        state.metric === "read" ? "Avg Reading" :
-        state.metric === "write" ? "Avg Writing" : "Avg Total";
-      const value = (mean != null) ? Math.round(mean) : "—";
-      const countLine = count > 0
-        ? `Year ${state.year} • ${count} schools in view`
-        : (totalCount > 0 ? `Year ${state.year} • 0 in view (of ${totalCount} total)` : `Year ${state.year} • 0 schools`);
-      return `
-        <div style='font-weight:700'>${boroName}</div>
-        <div style='color:#9aa4c7;font-size:11px'>${countLine}</div>
-        <div style='margin-top:4px'>${label}: <b>${value}</b>${state.metric === "total" ? " / 2400" : ""}</div>
-      `;
-    };
-
-    // Borough shapes
+    // === Borough shapes (no popup tooltip anymore) ===
     gMap.selectAll("path")
       .data(nycGeo.features)
       .join("path")
@@ -783,18 +764,11 @@
         .attr("fill","#1c2448")
         .attr("stroke","#2f3c7a")
         .attr("stroke-width",0.8)
-        .on("mouseenter", function(event, f) {
-          idle.style("opacity", 0);
+        .on("mouseenter", function() {
           d3.select(this).attr("fill","#2e3c7a");
-          boroTT.html(tipHTMLBorough(f.properties.BoroName)).style("opacity", 1);
-          placeTooltip(event, boroTT.node());
         })
-        .on("mousemove", function(event){ placeTooltip(event, boroTT.node()); })
         .on("mouseleave", function() {
           d3.select(this).attr("fill","#1c2448");
-          boroTT.style("opacity",0);
-          updateIdle();
-          idle.style("opacity", 1);
         });
 
     gLabels.selectAll("text")
@@ -862,7 +836,7 @@
     const caption = document.createElement('div');
     caption.className = 'caption';
     caption.textContent =
-      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools or boroughs for details. Click a school to pin it. When not hovering, the NYC-wide average for the selected year is shown.";
+      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools for details; click to pin. When not hovering, the NYC-wide average for the selected year is shown.";
     wrap.appendChild(caption);
 
     chartContainer.appendChild(wrap);
