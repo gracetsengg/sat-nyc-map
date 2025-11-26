@@ -98,30 +98,17 @@
       font-size:12px;
       color:var(--muted);
     }
+
     .tooltip{
       position:absolute; pointer-events:none; background:#0b132f; color:var(--ink);
       border:1px solid #2a356c; border-radius:12px; padding:10px 12px; font-size:12px;
       box-shadow:0 10px 30px rgba(0,0,0,.35); opacity:0; transition:opacity .15s;
-      z-index: 5;
+      z-index: 10;
     }
+
     .boro { fill:#0a1438; stroke:#29346b; stroke-width:.8; }
     .boro.hover { stroke:#a9b5ff; stroke-width:1.4; }
     .school { stroke:#0b1020; stroke-width:.7; }
-
-    /* Help button */
-    .help-btn {
-      position:absolute;
-      right:16px;
-      top:48px;
-      background:linear-gradient(180deg,#1b2350,#101737);
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:10px;
-      padding:6px 10px;
-      font:12px system-ui, sans-serif;
-      cursor:pointer;
-      box-shadow:0 6px 18px rgba(0,0,0,.35);
-    }
 
     .chart-wrap {
       position:relative;
@@ -131,51 +118,10 @@
       box-shadow:0 0 15px rgba(0,0,0,0.3);
     }
 
-    /* Help overlay */
-    .overlay {
-      position:absolute;
-      inset:0;
-      background:rgba(3,7,25,.65);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:10;
-    }
-    .overlay-modal {
-      width:min(720px, 92%);
-      background:#0b132f;
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:14px;
-      box-shadow:0 20px 60px rgba(0,0,0,.45);
-      padding:16px;
-      font-size:13px;
-    }
-    .overlay-footer {
-      display:flex;
-      gap:8px;
-      margin-top:12px;
-      justify-content:flex-end;
-      font-size:12px;
-    }
-    .overlay-footer button {
-      background:#1b2350;
-      color:#e6ecff;
-      border:1px solid #2a356c;
-      border-radius:10px;
-      padding:6px 10px;
-      font:12px system-ui, sans-serif;
-      cursor:pointer;
-    }
-    .overlay-footer label {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      margin-right:auto;
-      color:#9aa4c7;
+    #chart-container {
+      position: relative; /* so tooltip is positioned relative to this */
     }
 
-    /* Stats side box */
     #stats-panel {
       background:#0b132f;
       color:#e6ecff;
@@ -186,7 +132,6 @@
       box-shadow:0 10px 30px rgba(0,0,0,.35);
     }
 
-    /* Histogram panel */
     #hist-panel {
       margin-top:10px;
     }
@@ -242,9 +187,7 @@
 
       <div class="controls-group">
         <span class="control-label">Boroughs</span>
-        <div id="boroughs-container" class="checkbox-list">
-          <!-- filled after data load -->
-        </div>
+        <div id="boroughs-container" class="checkbox-list"></div>
       </div>
 
       <div class="controls-group">
@@ -256,7 +199,7 @@
 
       <h3>Selection stats</h3>
       <div id="stats-panel">
-        Hover a school (or click to pin) to see details here.
+        Hover a school (or click to pin) to see details.
       </div>
 
       <div id="hist-panel">
@@ -265,41 +208,44 @@
       </div>
     </div>
 
-    <!-- Right: main chart -->
-    <div>
-      <div id="chart-container"></div>
+    <!-- Right: main chart + floating tooltip -->
+    <div id="chart-container">
+      <div id="hover-tooltip" class="tooltip"></div>
     </div>
   </div>
 </div>
 
 <script>
 (function() {
-  // === Global-ish state ===
   let points = [];
   let filteredPoints = [];
   let boroughList = [];
+  let cachedNycGeo = null;
+
   const state = {
     metric: 'total',
     year: '2010',
     search: '',
     minScore: 0,
-    boroughsSelected: new Set(), // filled after load
-    pinMode: true,
+    boroughsSelected: new Set(),
+    pinMode: true,   // now effectively unused
     detail: null
   };
 
-  const metricSelect = document.getElementById('metric-select');
-  const yearSelect = document.getElementById('year-select');
-  const searchInput = document.getElementById('search-input');
-  const minScoreInput = document.getElementById('min-score-input');
-  const minScoreLabel = document.getElementById('min-score-label');
-  const pinModeInput = document.getElementById('pinmode-input');
+  // DOM refs
+  const metricSelect    = document.getElementById('metric-select');
+  const yearSelect      = document.getElementById('year-select');
+  const searchInput     = document.getElementById('search-input');
+  const minScoreInput   = document.getElementById('min-score-input');
+  const minScoreLabel   = document.getElementById('min-score-label');
+  const pinModeInput    = document.getElementById('pinmode-input');
   const boroughsContainer = document.getElementById('boroughs-container');
-  const statsPanel = document.getElementById('stats-panel');
-  const histContainer = document.getElementById('histogram');
-  const chartContainer = document.getElementById('chart-container');
+  const statsPanel      = document.getElementById('stats-panel');
+  const histContainer   = document.getElementById('histogram');
+  const chartContainer  = document.getElementById('chart-container');
+  const tooltip         = d3.select('#hover-tooltip');
 
-  // === Data loading ===
+  // === Load data ===
   Promise.all([
     d3.json('nyc_boroughs.json'),
     d3.csv('sat_with_locations_boroughs.csv', d3.autoType)
@@ -352,7 +298,8 @@
     attachControlListeners();
 
     recalcFiltered();
-    renderAll(nycGeo);
+    cachedNycGeo = nycGeo;
+    renderAll();
   }).catch(err => {
     console.error('Data load error:', err);
     chartContainer.textContent = 'Error loading data. Check file paths.';
@@ -448,20 +395,19 @@
       rerender();
     });
     pinModeInput.addEventListener('change', () => {
-      state.pinMode = pinModeInput.checked;
+      state.pinMode = pinModeInput.checked; // no longer affects behavior
     });
   }
 
-  function renderAll(nycGeo) {
-    renderChart(nycGeo);
+  function renderAll() {
+    renderChart();
     renderHistogram();
     renderStatsPanel();
   }
 
-  let cachedNycGeo = null;
   function rerender() {
     if (cachedNycGeo) {
-      renderChart(cachedNycGeo, true);
+      renderChart();
       renderHistogram();
       renderStatsPanel();
     }
@@ -538,9 +484,83 @@
     return wrap;
   }
 
-  function renderChart(nycGeo, isUpdate = false) {
-    cachedNycGeo = nycGeo;
-    chartContainer.innerHTML = '';
+  // Move tooltip *next to the mouse* relative to chart-container
+  function moveTooltip(event) {
+    const rect = chartContainer.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    tooltip
+      .style("left", (x + 15) + "px")
+      .style("top",  (y + 15) + "px");
+  }
+
+  function tipHTMLSchool(d) {
+    const s = getStats(d, state.year);
+    return `
+      <div style="font-weight:700">${d.name}</div>
+      <div style="color:#9aa4c7;font-size:12px">
+        ${d.borough} • DBN ${d.DBN} • Year ${state.year}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font-size:12px">
+        <div><div style="color:#9aa4c7">Reading</div><b>${s.read ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Math</div><b>${s.math ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Writing</div><b>${s.write ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Total</div><b>${s.total ?? "—"}</b> / 2400</div>
+      </div>`;
+  }
+
+  function tipHTMLBorough(boroName) {
+    const normalizeBoro = s => (s ?? "").toString().trim().toUpperCase();
+    const key = normalizeBoro(boroName);
+
+    const arrView = filteredPoints.filter(d =>
+      normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
+    );
+    const meanView = arrView.length ? d3.mean(arrView, metricAccessor) : null;
+    const { count: totalCount } = (function() {
+      const arrAll = points.filter(d =>
+        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
+      );
+      return { count: arrAll.length };
+    })();
+
+    const label =
+      state.metric === "math" ? "Avg Math" :
+      state.metric === "read" ? "Avg Reading" :
+      state.metric === "write" ? "Avg Writing" : "Avg Total";
+
+    const value = (meanView != null) ? Math.round(meanView) : "—";
+    const count = arrView.length;
+    const countLine = count > 0
+      ? `Year ${state.year} • ${count} schools in view`
+      : (totalCount > 0
+          ? `Year ${state.year} • 0 in view (of ${totalCount} total)`
+          : `Year ${state.year} • 0 schools`);
+
+    return `
+      <div style="font-weight:700">${boroName}</div>
+      <div style="color:#9aa4c7;font-size:12px">${countLine}</div>
+      <div style="margin-top:6px">${label}: <b>${value}</b>${state.metric === "total" ? " / 2400" : ""}</div>
+    `;
+  }
+
+  function cityStats() {
+    const arr = points.filter(d => Number.isFinite(metricAccessor(d)));
+    const mean = arr.length ? Math.round(d3.mean(arr, metricAccessor)) : '—';
+    const count = arr.length;
+    const label =
+      state.metric === "math" ? "Avg Math" :
+      state.metric === "read" ? "Avg Reading" :
+      state.metric === "write" ? "Avg Writing" : "Avg Total";
+    return { mean, count, label };
+  }
+
+  function renderChart() {
+    const nycGeo = cachedNycGeo;
+    chartContainer.innerHTML = '<div id="hover-tooltip" class="tooltip"></div>';
+    // re-bind tooltip after clearing container
+    tooltip.node().parentNode || tooltip.remove();
+    const localTooltip = d3.select('#hover-tooltip');
 
     const width = chartContainer.clientWidth || 800;
     const H = 740;
@@ -560,94 +580,17 @@
     subtitle.textContent = `Average SAT Scores by School and Borough (${state.year})`;
     subtitle.style.color = '#9aa4c7';
     subtitle.style.font = '14px system-ui, sans-serif';
-    subtitle.style.marginBottom = '12px';
+    subtitle.style.marginBottom = '8px';
     wrap.appendChild(subtitle);
 
-    // Help button & overlay
-    const helpBtn = document.createElement('button');
-    helpBtn.textContent = 'Help';
-    helpBtn.className = 'help-btn';
-    wrap.appendChild(helpBtn);
+    // compute color scale once
+    const colorScale = computeColorScale();
 
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay';
-    const modal = document.createElement('div');
-    modal.className = 'overlay-modal';
-
-    const modalTitle = document.createElement('div');
-    modalTitle.textContent = 'How to read this map';
-    modalTitle.style.font = '600 16px system-ui, sans-serif';
-    modalTitle.style.marginBottom = '8px';
-
-    const modalBody = document.createElement('div');
-    modalBody.style.color = '#c6cefb';
-    modalBody.style.lineHeight = '1.45';
-    modalBody.innerHTML = `
-      <div style="margin-bottom:8px">
-        <b>What you are seeing</b><br/>
-        Each circle is a NYC public high school. Color reflects SAT performance for the selected metric, scaled within the current data range. Size increases with higher scores.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <b>Explore</b><br/>
-          • Hover a school for full scores and details<br/>
-          • Click a school to pin its tooltip (if pin mode is enabled)<br/>
-          • Hover a borough to see that borough’s average<br/>
-          • Use your trackpad or mouse to pan and zoom
-        </div>
-        <div>
-          <b>Controls</b><br/>
-          • Use the year control to switch between 2010 and 2012<br/>
-          • Change the metric to view reading, math, writing, or total<br/>
-          • Use search, minimum score, and borough filters to focus
-        </div>
-      </div>
-      <div style="margin-top:8px">
-        When nothing is hovered, the box in the top right shows the NYC-wide average for the current year and metric.
-      </div>
-    `;
-
-    const modalFooter = document.createElement('div');
-    modalFooter.className = 'overlay-footer';
-
-    const dontShowLabel = document.createElement('label');
-    const dontShowCb = document.createElement('input');
-    dontShowCb.type = 'checkbox';
-    dontShowLabel.appendChild(dontShowCb);
-    dontShowLabel.appendChild(document.createTextNode('Do not show on load'));
-    modalFooter.appendChild(dontShowLabel);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    modalFooter.appendChild(closeBtn);
-
-    modal.appendChild(modalTitle);
-    modal.appendChild(modalBody);
-    modal.appendChild(modalFooter);
-    overlay.appendChild(modal);
-    wrap.appendChild(overlay);
-
-    const openHelp = () => { overlay.style.display = 'flex'; };
-    const closeHelp = () => {
-      overlay.style.display = 'none';
-      if (dontShowCb.checked) {
-        try { localStorage.setItem('satMapOnboardSeen', '1'); } catch {}
-      }
-    };
-    helpBtn.addEventListener('click', openHelp);
-    closeBtn.addEventListener('click', closeHelp);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeHelp();
-    });
-    wrap.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeHelp();
-    });
-
-    try {
-      if (!isUpdate && localStorage.getItem('satMapOnboardSeen') !== '1') {
-        setTimeout(openHelp, 50);
-      }
-    } catch {}
+    // legend placed right under subtitle
+    const legendDiv = document.createElement('div');
+    legendDiv.style.marginBottom = '8px';
+    legendDiv.appendChild(makeColorLegend(colorScale, width));
+    wrap.appendChild(legendDiv);
 
     const svg = d3.select(wrap).append("svg")
       .attr("width", width)
@@ -661,9 +604,6 @@
     const gMap    = svg.append("g");
     const gNodes  = svg.append("g");
     const gLabels = svg.append("g");
-
-    const nodeTT = d3.select(wrap).append("div").attr("class","tooltip");
-    const boroTT = d3.select(wrap).append("div").attr("class","tooltip");
 
     const idle = d3.select(wrap).append("div")
       .style("position","absolute")
@@ -679,84 +619,15 @@
       .style("box-shadow","0 10px 30px rgba(0,0,0,.35)")
       .style("opacity", 1);
 
-    const place = (event, el = nodeTT) => {
-      const rect = wrap.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      el.style("left", (x + 14) + "px").style("top", (y + 14) + "px");
-    };
-
-    const normalizeBoro = s => (s ?? "").toString().trim().toUpperCase();
-
-    const boroStats = (boroName) => {
-      const key = normalizeBoro(boroName);
-      const arr = filteredPoints.filter(d =>
-        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
-      );
-      const mean = arr.length ? d3.mean(arr, metricAccessor) : null;
-      return { mean, count: arr.length };
-    };
-
-    const boroStatsAll = (boroName) => {
-      const key = normalizeBoro(boroName);
-      const arr = points.filter(d =>
-        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
-      );
-      const mean = arr.length ? d3.mean(arr, metricAccessor) : null;
-      return { mean, count: arr.length };
-    };
-
-    const cityStats = () => {
-      const arr = points.filter(d => Number.isFinite(metricAccessor(d)));
-      const mean = arr.length ? Math.round(d3.mean(arr, metricAccessor)) : '—';
-      const count = arr.length;
-      const label =
-        state.metric === "math" ? "Avg Math" :
-        state.metric === "read" ? "Avg Reading" :
-        state.metric === "write" ? "Avg Writing" : "Avg Total";
-      return { mean, count, label };
-    };
-
-    const updateIdle = () => {
+    function updateIdle() {
       const { mean, count, label } = cityStats();
       idle.html(
         `<div style="font-weight:700">NYC Average (${state.year})</div>
          <div style="color:#9aa4c7;margin-top:2px">${count} schools</div>
          <div style="margin-top:6px">${label}: <b>${mean}</b>${state.metric === "total" ? " / 2400" : ""}</div>`
       );
-    };
+    }
     updateIdle();
-
-    const tipHTMLSchool = (d) => {
-      const s = getStats(d, state.year);
-      return `
-        <div style='font-weight:700'>${d.name}</div>
-        <div style='color:#9aa4c7;font-size:12px'>${d.borough} • DBN ${d.DBN} • Year ${state.year}</div>
-        <div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font-size:12px'>
-          <div><div style='color:#9aa4c7'>Reading</div><b>${s.read ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Math</div><b>${s.math ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Writing</div><b>${s.write ?? "—"}</b></div>
-          <div><div style='color:#9aa4c7'>Total</div><b>${s.total ?? "—"}</b> / 2400</div>
-        </div>`;
-    };
-
-    const tipHTMLBorough = (boroName) => {
-      const { mean, count } = boroStats(boroName);
-      const { count: totalCount } = boroStatsAll(boroName);
-      const label =
-        state.metric === "math" ? "Avg Math" :
-        state.metric === "read" ? "Avg Reading" :
-        state.metric === "write" ? "Avg Writing" : "Avg Total";
-      const value = (mean != null) ? Math.round(mean) : "—";
-      const countLine = count > 0
-        ? `Year ${state.year} • ${count} schools in view`
-        : (totalCount > 0 ? `Year ${state.year} • 0 in view (of ${totalCount} total)` : `Year ${state.year} • 0 schools`);
-      return `
-        <div style='font-weight:700'>${boroName}</div>
-        <div style='color:#9aa4c7;font-size:12px'>${countLine}</div>
-        <div style='margin-top:6px'>${label}: <b>${value}</b>${state.metric === "total" ? " / 2400" : ""}</div>
-      `;
-    };
 
     // Borough shapes
     gMap.selectAll("path")
@@ -770,13 +641,14 @@
         .on("mouseenter", function(event, f) {
           idle.style("opacity", 0);
           d3.select(this).attr("fill","#2e3c7a");
-          boroTT.html(tipHTMLBorough(f.properties.BoroName)).style("opacity", 1);
-          place(event, boroTT.node());
+          localTooltip.html(tipHTMLBorough(f.properties.BoroName))
+            .style("opacity", 1);
+          moveTooltip(event);
         })
-        .on("mousemove", function(event){ place(event, boroTT.node()); })
+        .on("mousemove", function(event){ moveTooltip(event); })
         .on("mouseleave", function() {
           d3.select(this).attr("fill","#1c2448");
-          boroTT.style("opacity",0);
+          localTooltip.style("opacity",0);
           updateIdle();
           idle.style("opacity", 1);
         });
@@ -790,22 +662,24 @@
         .attr("font-size",12)
         .text(d => d.properties.BoroName);
 
-    const colorScale = computeColorScale();
-
     const showSchool = (event, d) => {
       idle.style("opacity", 0);
       state.detail = d;
       renderStatsPanel();
-      nodeTT.html(tipHTMLSchool(d)).style("opacity", 1);
-      place(event, nodeTT.node());
+      localTooltip.html(tipHTMLSchool(d))
+        .style("opacity", 1);
+      moveTooltip(event);
     };
-    const moveSchool = (event) => place(event, nodeTT.node());
+
+    const moveSchool = (event) => {
+      moveTooltip(event);
+    };
+
     const hideSchool = () => {
-      nodeTT.style("opacity", 0);
-      if (!state.pinMode) {
-        state.detail = null;
-        renderStatsPanel();
-      }
+      // always clear detail now — no more pinned popup
+      localTooltip.style("opacity", 0);
+      state.detail = null;
+      renderStatsPanel();
       updateIdle();
       idle.style("opacity", 1);
     };
@@ -823,7 +697,7 @@
           .on("mouseenter", showSchool)
           .on("mousemove", moveSchool)
           .on("mouseleave", hideSchool)
-          .on("click", (ev, d) => { state.detail = d; renderStatsPanel(); showSchool(ev, d); })
+          // CLICK HANDLER REMOVED – click no longer pins a popup
           .call(e => e.transition().duration(450).attr("r", d => radiusAccessor(d))),
         update => update.call(u => u.transition().duration(400)
           .attr("fill", d => colorScale(metricAccessor(d)))
@@ -843,16 +717,10 @@
       });
     svg.call(zoom);
 
-    // Legend
-    const legendDiv = document.createElement('div');
-    legendDiv.style.marginTop = '12px';
-    legendDiv.appendChild(makeColorLegend(colorScale, width));
-    wrap.appendChild(legendDiv);
-
     const caption = document.createElement('div');
     caption.className = 'caption';
     caption.textContent =
-      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools or boroughs for details. Click a school to pin it. When not hovering, the NYC-wide average for the selected year is shown.";
+      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools or boroughs for details. When not hovering, the NYC-wide average for the selected year is shown.";
     wrap.appendChild(caption);
 
     chartContainer.appendChild(wrap);
