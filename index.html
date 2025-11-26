@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SAT in the City – NYC Schools</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#11162a; --ink:#e6ecff; --muted:#9aa4c7;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    #app {
+      max-width: 1200px;
+      margin: 16px auto 40px auto;
+      padding: 0 16px;
+    }
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 24px;
+      font-weight: 650;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    .panel {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 12px 14px;
+      border: 1px solid #252b4f;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    }
+    .panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    label, .control-label {
+      font-size: 12px;
+      color: var(--muted);
+      display:block;
+      margin-bottom: 4px;
+    }
+    select, input[type="text"], input[type="range"] {
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid #30385f;
+      background:#06091a;
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .controls-group {
+      margin-bottom: 10px;
+    }
+    .controls-inline {
+      display:flex;
+      gap:8px;
+    }
+    .controls-inline > div {
+      flex:1;
+    }
+    .checkbox-list {
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px 12px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .checkbox-list label {
+      display:flex;
+      align-items:center;
+      gap:4px;
+      margin-bottom:0;
+    }
+    .toggle-label {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .tooltip{
+      position:absolute; pointer-events:none; background:#0b132f; color:var(--ink);
+      border:1px solid #2a356c; border-radius:12px; padding:10px 12px; font-size:12px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35); opacity:0; transition:opacity .15s;
+      z-index: 5;
+    }
+    .boro { fill:#0a1438; stroke:#29346b; stroke-width:.8; }
+    .boro.hover { stroke:#a9b5ff; stroke-width:1.4; }
+    .school { stroke:#0b1020; stroke-width:.7; }
+
+    /* Help button */
+    .help-btn {
+      position:absolute;
+      right:16px;
+      top:48px;
+      background:linear-gradient(180deg,#1b2350,#101737);
+      color:#e6ecff;
+      border:1px solid #2a356c;
+      border-radius:10px;
+      padding:6px 10px;
+      font:12px system-ui, sans-serif;
+      cursor:pointer;
+      box-shadow:0 6px 18px rgba(0,0,0,.35);
+    }
+
+    .chart-wrap {
+      position:relative;
+      background:#0b1020;
+      padding:16px;
+      border-radius:12px;
+      box-shadow:0 0 15px rgba(0,0,0,0.3);
+    }
+
+    /* Help overlay */
+    .overlay {
+      position:absolute;
+      inset:0;
+      background:rgba(3,7,25,.65);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:10;
+    }
+    .overlay-modal {
+      width:min(720px, 92%);
+      background:#0b132f;
+      color:#e6ecff;
+      border:1px solid #2a356c;
+      border-radius:14px;
+      box-shadow:0 20px 60px rgba(0,0,0,.45);
+      padding:16px;
+      font-size:13px;
+    }
+    .overlay-footer {
+      display:flex;
+      gap:8px;
+      margin-top:12px;
+      justify-content:flex-end;
+      font-size:12px;
+    }
+    .overlay-footer button {
+      background:#1b2350;
+      color:#e6ecff;
+      border:1px solid #2a356c;
+      border-radius:10px;
+      padding:6px 10px;
+      font:12px system-ui, sans-serif;
+      cursor:pointer;
+    }
+    .overlay-footer label {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin-right:auto;
+      color:#9aa4c7;
+    }
+
+    /* Stats side box */
+    #stats-panel {
+      background:#0b132f;
+      color:#e6ecff;
+      border:1px solid #2a356c;
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:13px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+
+    /* Histogram panel */
+    #hist-panel {
+      margin-top:10px;
+    }
+
+    .caption {
+      color:#9aa4c7;
+      font:13px system-ui, sans-serif;
+      margin-top:8px;
+      max-width:720px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <h1>SAT in the City</h1>
+  <div class="subtitle">Average SAT Scores by School and Borough (NYC)</div>
+
+  <div class="layout">
+    <!-- Left: controls + stats + histogram -->
+    <div class="panel">
+      <h3>Controls</h3>
+
+      <div class="controls-group controls-inline">
+        <div>
+          <span class="control-label">Metric</span>
+          <select id="metric-select">
+            <option value="total">Total (2010/2012)</option>
+            <option value="math">Math</option>
+            <option value="read">Reading</option>
+            <option value="write">Writing</option>
+          </select>
+        </div>
+        <div>
+          <span class="control-label">Year</span>
+          <select id="year-select">
+            <option value="2010">2010</option>
+            <option value="2012">2012</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="controls-group">
+        <label for="search-input">Search school</label>
+        <input type="text" id="search-input" placeholder="Type a school name…"/>
+      </div>
+
+      <div class="controls-group">
+        <label for="min-score-input">Minimum score:
+          <span id="min-score-label">0</span>
+        </label>
+        <input type="range" id="min-score-input" min="0" max="2400" step="10" value="0"/>
+      </div>
+
+      <div class="controls-group">
+        <span class="control-label">Boroughs</span>
+        <div id="boroughs-container" class="checkbox-list">
+          <!-- filled after data load -->
+        </div>
+      </div>
+
+      <div class="controls-group">
+        <label class="toggle-label">
+          <input type="checkbox" id="pinmode-input" checked />
+          Pin tooltip on click
+        </label>
+      </div>
+
+      <h3>Selection stats</h3>
+      <div id="stats-panel">
+        Hover a school (or click to pin) to see details here.
+      </div>
+
+      <div id="hist-panel">
+        <h3>Histogram</h3>
+        <div id="histogram"></div>
+      </div>
+    </div>
+
+    <!-- Right: main chart -->
+    <div>
+      <div id="chart-container"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // === Global-ish state ===
+  let points = [];
+  let filteredPoints = [];
+  let boroughList = [];
+  const state = {
+    metric: 'total',
+    year: '2010',
+    search: '',
+    minScore: 0,
+    boroughsSelected: new Set(), // filled after load
+    pinMode: true,
+    detail: null
+  };
+
+  const metricSelect = document.getElementById('metric-select');
+  const yearSelect = document.getElementById('year-select');
+  const searchInput = document.getElementById('search-input');
+  const minScoreInput = document.getElementById('min-score-input');
+  const minScoreLabel = document.getElementById('min-score-label');
+  const pinModeInput = document.getElementById('pinmode-input');
+  const boroughsContainer = document.getElementById('boroughs-container');
+  const statsPanel = document.getElementById('stats-panel');
+  const histContainer = document.getElementById('histogram');
+  const chartContainer = document.getElementById('chart-container');
+
+  // === Data loading ===
+  Promise.all([
+    d3.json('nyc_boroughs.json'),
+    d3.csv('sat_with_locations_boroughs.csv', d3.autoType)
+  ]).then(([nycGeo, rawCSV]) => {
+    points = rawCSV
+      .map(r => {
+        const name = r["SCHOOL NAME"] ?? r["SCHOOL_NAME"] ?? r.LOCATION_NAME ?? "";
+        const borough = (r.borough ?? "").toUpperCase();
+        const lat = +r.latitude;
+        const lon = +r.longitude;
+
+        const math2010  = +r.math_2010;
+        const read2010  = +r.reading_2010;
+        const write2010 = +r.writing_2010;
+        const total2010 = r.total_sat_2010 != null
+          ? +r.total_sat_2010
+          : (math2010 + read2010 + write2010);
+
+        const math2012  = +r["SAT Math Avg. Score 2012"] || +r.math_2012 || NaN;
+        const read2012  = +r["SAT Critical Reading Avg. Score 2012"] || +r.reading_2012 || NaN;
+        const write2012 = +r["SAT Writing Avg. Score 2012"] || +r.writing_2012 || NaN;
+        const total2012 = +r["Total SAT Score (Out of 2400) 2012"] || +r.total_sat_2012 || (math2012 + read2012 + write2012);
+
+        return {
+          name,
+          DBN: r.DBN,
+          borough,
+          lat,
+          lon,
+          math2010,
+          read2010,
+          write2010,
+          total2010,
+          math2012,
+          read2012,
+          write2012,
+          total2012
+        };
+      })
+      .filter(d =>
+        Number.isFinite(d.lat) &&
+        Number.isFinite(d.lon) &&
+        (Number.isFinite(d.total2010) || Number.isFinite(d.total2012))
+      );
+
+    boroughList = Array.from(new Set(points.map(d => d.borough).filter(Boolean))).sort();
+    boroughList.forEach(b => state.boroughsSelected.add(b));
+
+    buildBoroughCheckboxes();
+    attachControlListeners();
+
+    recalcFiltered();
+    renderAll(nycGeo);
+  }).catch(err => {
+    console.error('Data load error:', err);
+    chartContainer.textContent = 'Error loading data. Check file paths.';
+  });
+
+  // === Helpers ===
+  function getStats(d, year) {
+    if (year === '2012' && Number.isFinite(d.total2012)) {
+      return {
+        math: d.math2012,
+        read: d.read2012,
+        write: d.write2012,
+        total: d.total2012
+      };
+    }
+    return {
+      math: d.math2010,
+      read: d.read2010,
+      write: d.write2010,
+      total: d.total2010
+    };
+  }
+
+  function metricAccessor(d) {
+    const s = getStats(d, state.year);
+    if (state.metric === 'math') return s.math;
+    if (state.metric === 'read') return s.read;
+    if (state.metric === 'write') return s.write;
+    return s.total;
+  }
+
+  function radiusAccessor(d) {
+    const s = Math.max(0, Math.min(2400, +metricAccessor(d) || 0));
+    const lo = 600, hi = 2200;
+    const t = (Math.max(lo, Math.min(hi, s)) - lo) / (hi - lo);
+    return 3 + t * (18 - 3);
+  }
+
+  function recalcFiltered() {
+    const s = state.search.toLowerCase();
+    filteredPoints = points.filter(d => {
+      const val = metricAccessor(d);
+      return (
+        (!state.boroughsSelected.size || state.boroughsSelected.has(d.borough)) &&
+        Number.isFinite(val) &&
+        val >= state.minScore &&
+        (!s || (d.name ?? '').toLowerCase().includes(s))
+      );
+    });
+  }
+
+  function buildBoroughCheckboxes() {
+    boroughsContainer.innerHTML = '';
+    boroughList.forEach(b => {
+      const id = 'boro-' + b.replace(/\s+/g, '-');
+      const lbl = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.checked = true;
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.boroughsSelected.add(b);
+        else state.boroughsSelected.delete(b);
+        recalcFiltered();
+        rerender();
+      });
+      lbl.appendChild(cb);
+      lbl.appendChild(document.createTextNode(' ' + b));
+      boroughsContainer.appendChild(lbl);
+    });
+  }
+
+  function attachControlListeners() {
+    metricSelect.addEventListener('change', () => {
+      state.metric = metricSelect.value;
+      recalcFiltered();
+      rerender();
+    });
+    yearSelect.addEventListener('change', () => {
+      state.year = yearSelect.value;
+      recalcFiltered();
+      rerender();
+    });
+    searchInput.addEventListener('input', () => {
+      state.search = searchInput.value || '';
+      recalcFiltered();
+      rerender();
+    });
+    minScoreInput.addEventListener('input', () => {
+      state.minScore = +minScoreInput.value;
+      minScoreLabel.textContent = state.minScore;
+      recalcFiltered();
+      rerender();
+    });
+    pinModeInput.addEventListener('change', () => {
+      state.pinMode = pinModeInput.checked;
+    });
+  }
+
+  function renderAll(nycGeo) {
+    renderChart(nycGeo);
+    renderHistogram();
+    renderStatsPanel();
+  }
+
+  let cachedNycGeo = null;
+  function rerender() {
+    if (cachedNycGeo) {
+      renderChart(cachedNycGeo, true);
+      renderHistogram();
+      renderStatsPanel();
+    }
+  }
+
+  function computeColorScale() {
+    const src = filteredPoints.length ? filteredPoints : points;
+    const vals = src.map(metricAccessor).filter(Number.isFinite);
+    const [lo, hi] = d3.extent(vals);
+    const d0 = Math.max(0, Math.floor((lo ?? 0) / 10) * 10);
+    const d1 = Math.min(2400, Math.ceil((hi ?? 2400) / 10) * 10);
+
+    return d3.scaleSequential()
+      .domain([d0, d1])
+      .interpolator(d3.interpolateRgbBasis(["#d73027", "#fdae61", "#1a9850"]))
+      .clamp(true);
+  }
+
+  function makeColorLegend(colorScale, containerWidth) {
+    const m = state.metric;
+    const label = m === "math" ? "Math" :
+                  m === "read" ? "Reading" :
+                  m === "write" ? "Writing" : "Total";
+
+    const displayW = Math.max(300, Math.min(containerWidth - 32, 900));
+    const displayH = 14;
+    const dpr = (globalThis.devicePixelRatio || 1);
+    const pxW = Math.round(displayW * dpr);
+    const pxH = Math.round(displayH * dpr);
+    const [d0, d1] = colorScale.domain();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = pxW;
+    canvas.height = pxH;
+    canvas.style.width = displayW + "px";
+    canvas.style.height = displayH + "px";
+
+    const ctx = canvas.getContext("2d");
+    for (let x = 0; x < pxW; x++) {
+      const t = x / (pxW - 1);
+      const v = d0 * (1 - t) + d1 * t;
+      ctx.fillStyle = colorScale(v);
+      ctx.fillRect(x, 0, 1, pxH);
+    }
+
+    const wrap = document.createElement("div");
+    wrap.style.font = "12px system-ui, sans-serif";
+    wrap.style.color = "#e6ecff";
+
+    const header = document.createElement("div");
+    header.style.marginBottom = "6px";
+    header.innerHTML =
+      `Color = ${label} (${state.year}) · <span style="color:#d73027">Low</span> → ` +
+      `<span style="color:#fdae61">Medium</span> → <span style="color:#1a9850">High</span>`;
+    wrap.appendChild(header);
+
+    wrap.appendChild(canvas);
+
+    const axis = document.createElement("div");
+    axis.style.display = "flex";
+    axis.style.justifyContent = "space-between";
+    axis.style.marginTop = "6px";
+    axis.style.color = "#9aa4c7";
+    axis.style.width = displayW + "px";
+
+    const ticks = 6;
+    for (let i = 0; i < ticks; i++) {
+      const v = Math.round(d0 + (i / (ticks - 1)) * (d1 - d0));
+      const tick = document.createElement("div");
+      tick.textContent = v;
+      axis.appendChild(tick);
+    }
+    wrap.appendChild(axis);
+    return wrap;
+  }
+
+  function renderChart(nycGeo, isUpdate = false) {
+    cachedNycGeo = nycGeo;
+    chartContainer.innerHTML = '';
+
+    const width = chartContainer.clientWidth || 800;
+    const H = 740;
+    const M = 16;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-wrap';
+
+    const title = document.createElement('h2');
+    title.textContent = 'SAT in the City';
+    title.style.color = '#e6ecff';
+    title.style.font = '600 20px system-ui, sans-serif';
+    title.style.margin = '0 0 4px 0';
+    wrap.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.textContent = `Average SAT Scores by School and Borough (${state.year})`;
+    subtitle.style.color = '#9aa4c7';
+    subtitle.style.font = '14px system-ui, sans-serif';
+    subtitle.style.marginBottom = '12px';
+    wrap.appendChild(subtitle);
+
+    // Help button & overlay
+    const helpBtn = document.createElement('button');
+    helpBtn.textContent = 'Help';
+    helpBtn.className = 'help-btn';
+    wrap.appendChild(helpBtn);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    const modal = document.createElement('div');
+    modal.className = 'overlay-modal';
+
+    const modalTitle = document.createElement('div');
+    modalTitle.textContent = 'How to read this map';
+    modalTitle.style.font = '600 16px system-ui, sans-serif';
+    modalTitle.style.marginBottom = '8px';
+
+    const modalBody = document.createElement('div');
+    modalBody.style.color = '#c6cefb';
+    modalBody.style.lineHeight = '1.45';
+    modalBody.innerHTML = `
+      <div style="margin-bottom:8px">
+        <b>What you are seeing</b><br/>
+        Each circle is a NYC public high school. Color reflects SAT performance for the selected metric, scaled within the current data range. Size increases with higher scores.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <b>Explore</b><br/>
+          • Hover a school for full scores and details<br/>
+          • Click a school to pin its tooltip (if pin mode is enabled)<br/>
+          • Hover a borough to see that borough’s average<br/>
+          • Use your trackpad or mouse to pan and zoom
+        </div>
+        <div>
+          <b>Controls</b><br/>
+          • Use the year control to switch between 2010 and 2012<br/>
+          • Change the metric to view reading, math, writing, or total<br/>
+          • Use search, minimum score, and borough filters to focus
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        When nothing is hovered, the box in the top right shows the NYC-wide average for the current year and metric.
+      </div>
+    `;
+
+    const modalFooter = document.createElement('div');
+    modalFooter.className = 'overlay-footer';
+
+    const dontShowLabel = document.createElement('label');
+    const dontShowCb = document.createElement('input');
+    dontShowCb.type = 'checkbox';
+    dontShowLabel.appendChild(dontShowCb);
+    dontShowLabel.appendChild(document.createTextNode('Do not show on load'));
+    modalFooter.appendChild(dontShowLabel);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    modalFooter.appendChild(closeBtn);
+
+    modal.appendChild(modalTitle);
+    modal.appendChild(modalBody);
+    modal.appendChild(modalFooter);
+    overlay.appendChild(modal);
+    wrap.appendChild(overlay);
+
+    const openHelp = () => { overlay.style.display = 'flex'; };
+    const closeHelp = () => {
+      overlay.style.display = 'none';
+      if (dontShowCb.checked) {
+        try { localStorage.setItem('satMapOnboardSeen', '1'); } catch {}
+      }
+    };
+    helpBtn.addEventListener('click', openHelp);
+    closeBtn.addEventListener('click', closeHelp);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeHelp();
+    });
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeHelp();
+    });
+
+    try {
+      if (!isUpdate && localStorage.getItem('satMapOnboardSeen') !== '1') {
+        setTimeout(openHelp, 50);
+      }
+    } catch {}
+
+    const svg = d3.select(wrap).append("svg")
+      .attr("width", width)
+      .attr("height", H - 70);
+
+    const projection = d3.geoMercator()
+      .fitExtent([[M, M], [width - M, H - 100]], nycGeo);
+    const path = d3.geoPath(projection);
+
+    const gBrush  = svg.append("g");
+    const gMap    = svg.append("g");
+    const gNodes  = svg.append("g");
+    const gLabels = svg.append("g");
+
+    const nodeTT = d3.select(wrap).append("div").attr("class","tooltip");
+    const boroTT = d3.select(wrap).append("div").attr("class","tooltip");
+
+    const idle = d3.select(wrap).append("div")
+      .style("position","absolute")
+      .style("right","16px")
+      .style("top","16px")
+      .style("pointer-events","none")
+      .style("background","#0b132f")
+      .style("color","#e6ecff")
+      .style("border","1px solid #2a356c")
+      .style("border-radius","12px")
+      .style("padding","10px 12px")
+      .style("font","12px system-ui, sans-serif")
+      .style("box-shadow","0 10px 30px rgba(0,0,0,.35)")
+      .style("opacity", 1);
+
+    const place = (event, el = nodeTT) => {
+      const rect = wrap.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      el.style("left", (x + 14) + "px").style("top", (y + 14) + "px");
+    };
+
+    const normalizeBoro = s => (s ?? "").toString().trim().toUpperCase();
+
+    const boroStats = (boroName) => {
+      const key = normalizeBoro(boroName);
+      const arr = filteredPoints.filter(d =>
+        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
+      );
+      const mean = arr.length ? d3.mean(arr, metricAccessor) : null;
+      return { mean, count: arr.length };
+    };
+
+    const boroStatsAll = (boroName) => {
+      const key = normalizeBoro(boroName);
+      const arr = points.filter(d =>
+        normalizeBoro(d.borough) === key && Number.isFinite(metricAccessor(d))
+      );
+      const mean = arr.length ? d3.mean(arr, metricAccessor) : null;
+      return { mean, count: arr.length };
+    };
+
+    const cityStats = () => {
+      const arr = points.filter(d => Number.isFinite(metricAccessor(d)));
+      const mean = arr.length ? Math.round(d3.mean(arr, metricAccessor)) : '—';
+      const count = arr.length;
+      const label =
+        state.metric === "math" ? "Avg Math" :
+        state.metric === "read" ? "Avg Reading" :
+        state.metric === "write" ? "Avg Writing" : "Avg Total";
+      return { mean, count, label };
+    };
+
+    const updateIdle = () => {
+      const { mean, count, label } = cityStats();
+      idle.html(
+        `<div style="font-weight:700">NYC Average (${state.year})</div>
+         <div style="color:#9aa4c7;margin-top:2px">${count} schools</div>
+         <div style="margin-top:6px">${label}: <b>${mean}</b>${state.metric === "total" ? " / 2400" : ""}</div>`
+      );
+    };
+    updateIdle();
+
+    const tipHTMLSchool = (d) => {
+      const s = getStats(d, state.year);
+      return `
+        <div style='font-weight:700'>${d.name}</div>
+        <div style='color:#9aa4c7;font-size:12px'>${d.borough} • DBN ${d.DBN} • Year ${state.year}</div>
+        <div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font-size:12px'>
+          <div><div style='color:#9aa4c7'>Reading</div><b>${s.read ?? "—"}</b></div>
+          <div><div style='color:#9aa4c7'>Math</div><b>${s.math ?? "—"}</b></div>
+          <div><div style='color:#9aa4c7'>Writing</div><b>${s.write ?? "—"}</b></div>
+          <div><div style='color:#9aa4c7'>Total</div><b>${s.total ?? "—"}</b> / 2400</div>
+        </div>`;
+    };
+
+    const tipHTMLBorough = (boroName) => {
+      const { mean, count } = boroStats(boroName);
+      const { count: totalCount } = boroStatsAll(boroName);
+      const label =
+        state.metric === "math" ? "Avg Math" :
+        state.metric === "read" ? "Avg Reading" :
+        state.metric === "write" ? "Avg Writing" : "Avg Total";
+      const value = (mean != null) ? Math.round(mean) : "—";
+      const countLine = count > 0
+        ? `Year ${state.year} • ${count} schools in view`
+        : (totalCount > 0 ? `Year ${state.year} • 0 in view (of ${totalCount} total)` : `Year ${state.year} • 0 schools`);
+      return `
+        <div style='font-weight:700'>${boroName}</div>
+        <div style='color:#9aa4c7;font-size:12px'>${countLine}</div>
+        <div style='margin-top:6px'>${label}: <b>${value}</b>${state.metric === "total" ? " / 2400" : ""}</div>
+      `;
+    };
+
+    // Borough shapes
+    gMap.selectAll("path")
+      .data(nycGeo.features)
+      .join("path")
+        .attr("class","boro")
+        .attr("d", path)
+        .attr("fill","#1c2448")
+        .attr("stroke","#2f3c7a")
+        .attr("stroke-width",0.8)
+        .on("mouseenter", function(event, f) {
+          idle.style("opacity", 0);
+          d3.select(this).attr("fill","#2e3c7a");
+          boroTT.html(tipHTMLBorough(f.properties.BoroName)).style("opacity", 1);
+          place(event, boroTT.node());
+        })
+        .on("mousemove", function(event){ place(event, boroTT.node()); })
+        .on("mouseleave", function() {
+          d3.select(this).attr("fill","#1c2448");
+          boroTT.style("opacity",0);
+          updateIdle();
+          idle.style("opacity", 1);
+        });
+
+    gLabels.selectAll("text")
+      .data(nycGeo.features)
+      .join("text")
+        .attr("transform", d => `translate(${path.centroid(d)})`)
+        .attr("text-anchor","middle")
+        .attr("fill","#7f8eca")
+        .attr("font-size",12)
+        .text(d => d.properties.BoroName);
+
+    const colorScale = computeColorScale();
+
+    const showSchool = (event, d) => {
+      idle.style("opacity", 0);
+      state.detail = d;
+      renderStatsPanel();
+      nodeTT.html(tipHTMLSchool(d)).style("opacity", 1);
+      place(event, nodeTT.node());
+    };
+    const moveSchool = (event) => place(event, nodeTT.node());
+    const hideSchool = () => {
+      nodeTT.style("opacity", 0);
+      if (!state.pinMode) {
+        state.detail = null;
+        renderStatsPanel();
+      }
+      updateIdle();
+      idle.style("opacity", 1);
+    };
+
+    gNodes.selectAll("circle")
+      .data(filteredPoints, d => d.DBN ?? d.name)
+      .join(
+        enter => enter.append("circle")
+          .attr("class","school")
+          .attr("cx", d => projection([d.lon, d.lat])[0])
+          .attr("cy", d => projection([d.lon, d.lat])[1])
+          .attr("r", 0)
+          .attr("fill", d => colorScale(metricAccessor(d)))
+          .attr("opacity", 0.92)
+          .on("mouseenter", showSchool)
+          .on("mousemove", moveSchool)
+          .on("mouseleave", hideSchool)
+          .on("click", (ev, d) => { state.detail = d; renderStatsPanel(); showSchool(ev, d); })
+          .call(e => e.transition().duration(450).attr("r", d => radiusAccessor(d))),
+        update => update.call(u => u.transition().duration(400)
+          .attr("fill", d => colorScale(metricAccessor(d)))
+          .attr("r", d => radiusAccessor(d))
+          .attr("cx", d => projection([d.lon, d.lat])[0])
+          .attr("cy", d => projection([d.lon, d.lat])[1])),
+        exit => exit.transition().duration(300).attr("r", 0).remove()
+      );
+
+    const zoom = d3.zoom()
+      .scaleExtent([0.8, 12])
+      .on("zoom", ({transform}) => {
+        gMap.attr("transform", transform);
+        gNodes.attr("transform", transform);
+        gLabels.attr("transform", transform);
+        gBrush.attr("transform", transform);
+      });
+    svg.call(zoom);
+
+    // Legend
+    const legendDiv = document.createElement('div');
+    legendDiv.style.marginTop = '12px';
+    legendDiv.appendChild(makeColorLegend(colorScale, width));
+    wrap.appendChild(legendDiv);
+
+    const caption = document.createElement('div');
+    caption.className = 'caption';
+    caption.textContent =
+      "Each circle represents a public high school in NYC. Color indicates SAT performance scaled to the current data range. Hover schools or boroughs for details. Click a school to pin it. When not hovering, the NYC-wide average for the selected year is shown.";
+    wrap.appendChild(caption);
+
+    chartContainer.appendChild(wrap);
+  }
+
+  function renderHistogram() {
+    histContainer.innerHTML = '';
+    const width = Math.min(600, histContainer.clientWidth || 600);
+    const h = 120, m = {t:10, r:10, b:20, l:28};
+    const svg = d3.create("svg").attr("width", width).attr("height", h);
+    const g = svg.append("g").attr("transform", `translate(${m.l},${m.t})`);
+    const innerW = width - m.l - m.r;
+    const innerH = h - m.t - m.b;
+
+    const vals = filteredPoints.map(metricAccessor).filter(Number.isFinite);
+    if (!vals.length) {
+      g.append("text")
+        .attr("x", innerW/2)
+        .attr("y", innerH/2)
+        .attr("text-anchor","middle")
+        .attr("fill","#9aa4c7")
+        .text("No data for current filters");
+      histContainer.appendChild(svg.node());
+      return;
+    }
+
+    const x = d3.scaleLinear().domain(d3.extent(vals)).nice().range([0, innerW]);
+    const bins = d3.bin().domain(x.domain()).thresholds(20)(vals);
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(bins, d => d.length)]).nice()
+      .range([innerH, 0]);
+
+    g.append("g").selectAll("rect").data(bins).join("rect")
+      .attr("x", d => x(d.x0) + 1).attr("y", d => y(d.length))
+      .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+      .attr("height", d => innerH - y(d.length))
+      .attr("fill", "#25316b");
+
+    g.append("g").attr("transform", `translate(0,${innerH})`)
+      .call(d3.axisBottom(x).ticks(5).tickSizeOuter(0))
+      .selectAll("text").style("fill","#cbd3ff");
+    g.append("g")
+      .call(d3.axisLeft(y).ticks(3).tickSizeOuter(0))
+      .selectAll("text").style("fill","#cbd3ff");
+
+    histContainer.appendChild(svg.node());
+  }
+
+  function renderStatsPanel() {
+    const d = state.detail;
+    if (!d) {
+      statsPanel.textContent = 'Hover a school (or click to pin) to see details.';
+      return;
+    }
+    const s = getStats(d, state.year);
+    statsPanel.innerHTML = `
+      <div style="font-weight:700; font-size:14px">${d.name}</div>
+      <div style="color:#9aa4c7; font-size:12px; margin-bottom:6px">
+        ${d.borough} • DBN ${d.DBN} • Year ${state.year}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; font-size:12px">
+        <div><div style="color:#9aa4c7">Reading</div><b>${s.read ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Math</div><b>${s.math ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Writing</div><b>${s.write ?? "—"}</b></div>
+        <div><div style="color:#9aa4c7">Total</div><b>${s.total ?? "—"}</b> / 2400</div>
+      </div>
+    `;
+  }
+})();
+</script>
+</body>
+</html>
