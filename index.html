@@ -108,7 +108,6 @@
     .boro.hover { stroke:#a9b5ff; stroke-width:1.4; }
     .school { stroke:#0b1020; stroke-width:.7; }
 
-    /* Help button */
     .help-btn {
       position:absolute;
       right:16px;
@@ -131,7 +130,6 @@
       box-shadow:0 0 15px rgba(0,0,0,0.3);
     }
 
-    /* Help overlay */
     .overlay {
       position:absolute;
       inset:0;
@@ -175,7 +173,6 @@
       color:#9aa4c7;
     }
 
-    /* Stats side box */
     #stats-panel {
       background:#0b132f;
       color:#e6ecff;
@@ -186,7 +183,6 @@
       box-shadow:0 10px 30px rgba(0,0,0,.35);
     }
 
-    /* Histogram panel */
     #hist-panel {
       margin-top:10px;
     }
@@ -242,9 +238,7 @@
 
       <div class="controls-group">
         <span class="control-label">Boroughs</span>
-        <div id="boroughs-container" class="checkbox-list">
-          <!-- filled after data load -->
-        </div>
+        <div id="boroughs-container" class="checkbox-list"></div>
       </div>
 
       <div class="controls-group">
@@ -256,7 +250,7 @@
 
       <h3>Selection stats</h3>
       <div id="stats-panel">
-        Hover a school (or click to pin) to see details here.
+        Hover a school (or click to pin) to see details.
       </div>
 
       <div id="hist-panel">
@@ -274,32 +268,35 @@
 
 <script>
 (function() {
-  // === Global-ish state ===
+  // === Data/state ===
   let points = [];
   let filteredPoints = [];
   let boroughList = [];
+  let cachedNycGeo = null;
+
   const state = {
     metric: 'total',
     year: '2010',
     search: '',
     minScore: 0,
-    boroughsSelected: new Set(), // filled after load
+    boroughsSelected: new Set(),
     pinMode: true,
     detail: null
   };
 
-  const metricSelect = document.getElementById('metric-select');
-  const yearSelect = document.getElementById('year-select');
-  const searchInput = document.getElementById('search-input');
-  const minScoreInput = document.getElementById('min-score-input');
-  const minScoreLabel = document.getElementById('min-score-label');
-  const pinModeInput = document.getElementById('pinmode-input');
+  // DOM refs
+  const metricSelect    = document.getElementById('metric-select');
+  const yearSelect      = document.getElementById('year-select');
+  const searchInput     = document.getElementById('search-input');
+  const minScoreInput   = document.getElementById('min-score-input');
+  const minScoreLabel   = document.getElementById('min-score-label');
+  const pinModeInput    = document.getElementById('pinmode-input');
   const boroughsContainer = document.getElementById('boroughs-container');
-  const statsPanel = document.getElementById('stats-panel');
-  const histContainer = document.getElementById('histogram');
-  const chartContainer = document.getElementById('chart-container');
+  const statsPanel      = document.getElementById('stats-panel');
+  const histContainer   = document.getElementById('histogram');
+  const chartContainer  = document.getElementById('chart-container');
 
-  // === Data loading ===
+  // === Load data ===
   Promise.all([
     d3.json('nyc_boroughs.json'),
     d3.csv('sat_with_locations_boroughs.csv', d3.autoType)
@@ -352,7 +349,8 @@
     attachControlListeners();
 
     recalcFiltered();
-    renderAll(nycGeo);
+    cachedNycGeo = nycGeo;
+    renderAll();
   }).catch(err => {
     console.error('Data load error:', err);
     chartContainer.textContent = 'Error loading data. Check file paths.';
@@ -452,16 +450,15 @@
     });
   }
 
-  function renderAll(nycGeo) {
-    renderChart(nycGeo);
+  function renderAll() {
+    renderChart();
     renderHistogram();
     renderStatsPanel();
   }
 
-  let cachedNycGeo = null;
   function rerender() {
     if (cachedNycGeo) {
-      renderChart(cachedNycGeo, true);
+      renderChart();
       renderHistogram();
       renderStatsPanel();
     }
@@ -538,8 +535,8 @@
     return wrap;
   }
 
-  function renderChart(nycGeo, isUpdate = false) {
-    cachedNycGeo = nycGeo;
+  function renderChart() {
+    const nycGeo = cachedNycGeo;
     chartContainer.innerHTML = '';
 
     const width = chartContainer.clientWidth || 800;
@@ -644,7 +641,7 @@
     });
 
     try {
-      if (!isUpdate && localStorage.getItem('satMapOnboardSeen') !== '1') {
+      if (localStorage.getItem('satMapOnboardSeen') !== '1') {
         setTimeout(openHelp, 50);
       }
     } catch {}
@@ -679,7 +676,7 @@
       .style("box-shadow","0 10px 30px rgba(0,0,0,.35)")
       .style("opacity", 1);
 
-    const place = (event, el = nodeTT) => {
+    const placeTooltip = (event, el) => {
       const rect = wrap.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -771,9 +768,9 @@
           idle.style("opacity", 0);
           d3.select(this).attr("fill","#2e3c7a");
           boroTT.html(tipHTMLBorough(f.properties.BoroName)).style("opacity", 1);
-          place(event, boroTT.node());
+          placeTooltip(event, boroTT.node());
         })
-        .on("mousemove", function(event){ place(event, boroTT.node()); })
+        .on("mousemove", function(event){ placeTooltip(event, boroTT.node()); })
         .on("mouseleave", function() {
           d3.select(this).attr("fill","#1c2448");
           boroTT.style("opacity",0);
@@ -797,9 +794,11 @@
       state.detail = d;
       renderStatsPanel();
       nodeTT.html(tipHTMLSchool(d)).style("opacity", 1);
-      place(event, nodeTT.node());
+      placeTooltip(event, nodeTT.node());
     };
-    const moveSchool = (event) => place(event, nodeTT.node());
+    const moveSchool = (event) => {
+      placeTooltip(event, nodeTT.node());
+    };
     const hideSchool = () => {
       nodeTT.style("opacity", 0);
       if (!state.pinMode) {
