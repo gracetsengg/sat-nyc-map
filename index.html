@@ -637,8 +637,17 @@
     subtitle.textContent = `Average SAT Scores by School and Borough (${state.year})`;
     subtitle.style.color = '#9aa4c7';
     subtitle.style.font = '14px system-ui, sans-serif';
-    subtitle.style.marginBottom = '12px';
+    subtitle.style.marginBottom = '8px';
     wrap.appendChild(subtitle);
+
+    // compute color scale once
+    const colorScale = computeColorScale();
+
+    // === LEGEND NOW UP HERE, RIGHT UNDER SUBTITLE ===
+    const legendDiv = document.createElement('div');
+    legendDiv.style.marginBottom = '8px';
+    legendDiv.appendChild(makeColorLegend(colorScale, width));
+    wrap.appendChild(legendDiv);
 
     // Help button & overlay
     const helpBtn = document.createElement('button');
@@ -796,8 +805,6 @@
         .attr("font-size",12)
         .text(d => d.properties.BoroName);
 
-    const colorScale = computeColorScale();
-
     const showSchool = (event, d) => {
       idle.style("opacity", 0);
       state.detail = d;
@@ -853,12 +860,6 @@
         gBrush.attr("transform", transform);
       });
     svg.call(zoom);
-
-    // Legend
-    const legendDiv = document.createElement('div');
-    legendDiv.style.marginTop = '12px';
-    legendDiv.appendChild(makeColorLegend(colorScale, width));
-    wrap.appendChild(legendDiv);
 
     const caption = document.createElement('div');
     caption.className = 'caption';
